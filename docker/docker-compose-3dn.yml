@@ -1,0 +1,116 @@
+services:
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode
+    mem_limit: 1g
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_blocksize=16777216         # исправлено: dfs_blocksize
+      - HDFS_CONF_dfs_replication=3
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HADOOP_HEAPSIZE_MAX=512
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    networks:
+      - hadoop_network
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    hostname: datanode1        # добавлено
+    mem_limit: 1g
+    ports:
+      - "9864:9864"
+      - "9866:9866"
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870       # добавлено
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=3
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HADOOP_HEAPSIZE_MAX=512
+      # HDFS_CONF_dfs_datanode_hostname=localhost → удалено
+      # HDFS_CONF_dfs_datanode_address → удалено (не нужно)
+    volumes:
+      - datanode1_data:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_network
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    hostname: datanode2        # добавлено
+    mem_limit: 1g
+    ports:
+      - "9874:9864"
+      - "9876:9866"             # исправлено: хост:9876 → контейнер:9866
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870       # добавлено
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=3
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HADOOP_HEAPSIZE_MAX=512
+    volumes:
+      - datanode2_data:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_network
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    hostname: datanode3        # добавлено
+    mem_limit: 1g
+    ports:
+      - "9884:9864"
+      - "9886:9866"             # исправлено: хост:9886 → контейнер:9866
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870       # добавлено
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=3
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HADOOP_HEAPSIZE_MAX=512
+    volumes:
+      - datanode3_data:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_network
+
+  spark:
+    image: apache/spark-py:v3.2.1
+    container_name: spark_app
+    hostname: spark
+    mem_limit: 3g
+    environment:
+      - EXPERIMENT_ID=3dn_base       # отличие от 1dn файла
+    volumes:
+      - ../spark:/app
+      - ../data:/data
+      - ../results:/results
+    depends_on:
+      - namenode
+      - datanode1
+      - datanode2
+      - datanode3
+    command: tail -f /dev/null
+    networks:
+      - hadoop_network
+
+volumes:
+  namenode_data:
+  datanode1_data:
+  datanode2_data:
+  datanode3_data:
+
+networks:
+  hadoop_network:
+    driver: bridge

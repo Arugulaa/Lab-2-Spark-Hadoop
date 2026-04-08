@@ -1,0 +1,67 @@
+services:
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode        # имя по которому DataNode и Spark находят NameNode
+    mem_limit: 1g
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_blocksize=16777216          # 16 МБ, правильное имя переменной
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HADOOP_HEAPSIZE_MAX=512
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    networks:
+      - hadoop_network
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    hostname: datanode1       # имя по которому NameNode регистрирует DataNode
+    mem_limit: 1g
+    ports:
+      - "9864:9864"
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870    # ждём пока NameNode готов
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HADOOP_HEAPSIZE_MAX=512
+    volumes:
+      - datanode1_data:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - hadoop_network
+
+  spark:
+    image: apache/spark-py:v3.2.1   # образ с Python, без лишнего
+    container_name: spark_app
+    hostname: spark
+    mem_limit: 3g
+    environment:
+      - EXPERIMENT_ID=1dn_base        # читаем в app.py через os.environ
+    volumes:
+      - ../spark:/app                 # монтируем папку с app.py
+      - ../data:/data                 # датасет
+      - ../results:/results           # сюда пишем результаты
+    depends_on:
+      - namenode
+      - datanode
+    command: tail -f /dev/null        # держим контейнер живым
+    networks:
+      - hadoop_network
+
+volumes:
+  namenode_data:
+  datanode1_data:
+
+networks:
+  hadoop_network:
+    driver: bridge
