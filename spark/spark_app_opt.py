@@ -7,19 +7,16 @@ import logging
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# ──────────────────────────────────────────
-# Конфигурация эксперимента
-# ──────────────────────────────────────────
-
+# Конфигурация эксперимента:
 # os.environ.get — читаем значение из docker-compose, не хардкодим
 EXPERIMENT_ID = os.environ.get("EXPERIMENT_ID", "1dn_opt")
 
 RESULTS_DIR = "/results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# ──────────────────────────────────────────
+# !!!
 # Логгер
-# ──────────────────────────────────────────
+# !!!
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,10 +24,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 logger = logging.getLogger("SparkAppOpt")
-
-# ──────────────────────────────────────────
-# Вспомогательные функции
-# ──────────────────────────────────────────
 
 def get_ram_mb():
     return psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
@@ -44,9 +37,9 @@ def run_step(spark, description, func):
     spark.sparkContext.setJobDescription(None)
     return result, elapsed
 
-# ──────────────────────────────────────────
+# !!!
 # Создание Spark Session
-# ──────────────────────────────────────────
+# !!!
 
 logger.info(f"Эксперимент: {EXPERIMENT_ID}")
 logger.info("Создаём Spark Session (оптимизированная)...")
@@ -71,17 +64,16 @@ spark = (
 spark.sparkContext.setLogLevel("ERROR")
 logger.info("Spark Session создана успешно")
 
-# ──────────────────────────────────────────
-# Замеры
-# ──────────────────────────────────────────
-
+# !
+# Начинаем замерять время, память
+# !
 ram_start = get_ram_mb()
 time_total_start = time.time()
 logger.info(f"RAM до начала работы: {ram_start:.1f} MB")
 
 step_times = {}
 
-# ── Шаг 1: Чтение данных из HDFS ──────────
+# >> Шаг 1: Чтение данных из HDFS
 
 def step_read():
     df = spark.read.csv(
@@ -95,13 +87,13 @@ def step_read():
 
 df, step_times["чтение"] = run_step(spark, "Чтение CSV из HDFS", step_read)
 
-# ── Шаг 1.5: Кэширование ← ОПТИМИЗАЦИЯ ───
+# Шаг 1.a: Кэширование. ОПТИМИЗАЦИЯ ───
 # .cache() сохраняет df в памяти после первого action (.count() выше).
 # Все следующие шаги читают данные из RAM, а не снова с HDFS.
 df = df.cache()
 logger.info("DataFrame закэширован в памяти")
 
-# ── Шаг 2: Обработка пропусков ────────────
+# >> Шаг 2: Обработка пропусков
 
 def step_fillna():
     mean_rating = df.select(F.mean("customer_rating")).first()[0]
@@ -109,13 +101,13 @@ def step_fillna():
 
 df, step_times["пропуски"] = run_step(spark, "Обработка пропусков", step_fillna)
 
-# ── Шаг 2.5: Repartition ← ОПТИМИЗАЦИЯ ───
+# >> Шаг 2.a: Repartition.ОПТИМИЗАЦИЯ
 # После fillna переразбиваем данные равномерно по 8 партициям.
 # Это убирает перекос который мог возникнуть при чтении из HDFS-блоков.
 df = df.repartition(8)
 logger.info("DataFrame переразбит на 8 партиций")
 
-# ── Шаг 3: groupBy + агрегация ────────────
+# >> Шаг 3: groupBy + агрегация
 
 def step_groupby():
     result = (
@@ -135,7 +127,7 @@ result_category, step_times["группировка"] = run_step(
     spark, "Группировка по категориям", step_groupby
 )
 
-# ── Шаг 4: Фильтрация экспресс-заказов ────
+# >> Шаг 4: Фильтрация экспресс-заказов
 
 def step_express():
     result = (
@@ -155,8 +147,8 @@ result_express, step_times["фильтрация"] = run_step(
     spark, "Фильтрация экспресс-заказов", step_express
 )
 
-# ── Освобождаем кэш ← ОПТИМИЗАЦИЯ ─────────
-# .unpersist() убирает df из памяти — важно делать после всех шагов
+# ── Освобождаем кэш. ОПТИМИЗАЦИЯ ─────────
+# .unpersist() убирает df из памяти
 df.unpersist()
 logger.info("Кэш очищен")
 
